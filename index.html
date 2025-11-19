@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Women Safety Rating System</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    /* minimal inline styles to ensure readability if style.css is missing */
+    body { font-family: "Poppins", sans-serif; background: #fff7fb; margin:0; color:#333; }
+    .container { max-width:1200px; margin:30px auto; padding:20px; display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
+    .card { background:white; padding:20px; border-radius:12px; box-shadow:0 6px 18px rgba(0,0,0,0.06); width:380px; }
+    .card[style] { width:500px; }
+    .btn { background:#ff4081; color:#fff; padding:10px; border:none; width:100%; border-radius:8px; cursor:pointer; margin-top:10px; }
+    .stars { display:flex; gap:5px; justify-content:center; margin-bottom:10px; }
+    .star { font-size:28px; cursor:pointer; color:#ccc; }
+    .star.active { color:gold; }
+    .score-bar { width:100%; height:15px; background:#eee; border-radius:10px; overflow:hidden; margin-bottom:8px; }
+    .progress { height:100%; width:0%; background:green; transition:width 600ms ease; }
+    .feedback-list { max-height:380px; overflow:auto; }
+  </style>
+</head>
+<body>
+
+  <header style="text-align:center; padding:20px; background:#ffccdd; color:#b30059; font-weight:700">🌸 Women Safety Rating System 🌸</header>
+
+  <div class="container">
+    <!-- Location and Safety Score Card -->
+    <div class="card">
+      <h2>📍 Choose or Detect Location</h2>
+      <input type="text" id="city-input" placeholder="Enter city name..." list="city-list" />
+      <datalist id="city-list">
+        <option value="Hyderabad"></option>
+        <option value="Bangalore"></option>
+        <option value="Chennai"></option>
+        <option value="Mumbai"></option>
+        <option value="Delhi"></option>
+        <option value="Kolkata"></option>
+        <option value="Pune"></option>
+      </datalist>
+
+      <button class="btn" onclick="detectLocation()">📡 Use My Current Location</button>
+      <p id="location" style="text-align:center; margin:8px 0;">No city selected yet.</p>
+
+      <h3>🛡️ Safety Score</h3>
+      <div class="score-bar">
+        <div class="progress" id="progress-bar"></div>
+      </div>
+      <p id="score-text">Safety Level: Not calculated yet.</p>
+
+      <button class="btn" onclick="checkCityAndLoad()">✨ Check Safety Score</button>
+      <button class="btn" onclick="sendSOS()">🚨 Send SOS Alert</button>
+    </div>
+
+    <!-- Rating and Feedback Card -->
+    <div class="card">
+      <h2>⭐ Rate This City</h2>
+      <div class="stars" id="star-container">
+        <span class="star" data-star="1">★</span>
+        <span class="star" data-star="2">★</span>
+        <span class="star" data-star="3">★</span>
+        <span class="star" data-star="4">★</span>
+        <span class="star" data-star="5">★</span>
+      </div>
+
+      <label>💡 Lighting (1-5)</label>
+      <input type="number" id="lighting" min="1" max="5" placeholder="Rate lighting condition">
+
+      <label>👮 Police Presence (1-5)</label>
+      <input type="number" id="police_presence" min="1" max="5" placeholder="Rate police visibility">
+
+      <label>👥 Crowd Level (1-5)</label>
+      <input type="number" id="crowd_level" min="1" max="5" placeholder="Rate crowd level">
+
+      <textarea id="feedback-msg" placeholder="Share your experience..." style="width:100%; min-height:80px; margin-top:8px;"></textarea>
+      <button class="btn" id="submit-feedback">💬 Submit Feedback</button>
+      <p id="hint" style="margin-top:8px; color:#555; font-size:0.9rem;"></p>
+    </div>
+
+    <!-- Feedback Display Card -->
+    <div class="card" style="width:500px;">
+      <h2>📋 Previous Ratings from All Cities</h2>
+      <div class="feedback-list" id="feedback-list">Loading...</div>
+    </div>
+  </div>
+
+  <footer style="text-align:center; padding:12px; color:#777;">© 2025 Women Safety Rating System | Empowering Women Everywhere 💖</footer>
+
+  <script>
+    const locationDisplay = document.getElementById("location");
+    const progressBar = document.getElementById("progress-bar");
+    const scoreText = document.getElementById("score-text");
+    const feedbackList = document.getElementById("feedback-list");
+    const stars = document.querySelectorAll(".star");
+    const feedbackMsg = document.getElementById("feedback-msg");
+    const submitBtn = document.getElementById("submit-feedback");
+    const hint = document.getElementById("hint");
+
+    let selectedRating = 0;
+    let currentCity = "";
+    let isExistingCity = false; // flag: true if city already exists in DB
+
+    // initialize
+    progressBar.style.width = "0%";
+    scoreText.textContent = "Safety Level: Not calculated yet.";
+    hint.textContent = "";
+
+    // ⭐ Star rating logic
+    stars.forEach((star, index) => {
+      star.addEventListener("click", () => {
+        selectedRating = index + 1;
+        stars.forEach((s, i) => s.classList.toggle("active", i < selectedRating));
+      });
+    });
+
+    // 🧭 Detect location automatically
+    async function detectLocation() {
+      locationDisplay.textContent = "Fetching your location...";
+      if (!navigator.geolocation) {
+        locationDisplay.textContent = "Geolocation not supported.";
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(async (pos) => {
+        const { latitude, longitude } = pos.coords;
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+          const data = await res.json();
+          const city = data.address.city || data.address.town || data.address.village || data.address.county || "";
+          if (city) {
+            document.getElementById("city-input").value = city;
+            locationDisplay.textContent = "Detected: " + city;
+            currentCity = city;
+            // optionally auto-check existing
+            await checkCityAndLoad();
+          } else {
+            locationDisplay.textContent = "Unable to determine city name.";
+          }
+        } catch (err) {
+          locationDisplay.textContent = "Error detecting city.";
+          console.error(err);
+        }
+      }, (err) => {
+        locationDisplay.textContent = "Permission denied or location unavailable.";
+        console.error("Geolocation error:", err);
+      }, { timeout: 10000 });
+    }
+
+    // Called when user clicks "Check Safety Score"
+    async function checkCityAndLoad() {
+      const cityInput = document.getElementById("city-input").value.trim();
+      if (!cityInput) {
+        alert("Please enter or select a city first!");
+        return;
+      }
+      currentCity = cityInput;
+      locationDisplay.textContent = "Selected: " + currentCity;
+
+      try {
+        const res = await fetch(`http://localhost:5000/api/feedback/${encodeURIComponent(currentCity)}`);
+        const data = await res.json();
+        if (data.exists) {
+          // city exists: load previous details into the form and switch button to Update
+          isExistingCity = true;
+          const fb = data.feedback;
+          selectedRating = Number(fb.rating) || 0;
+          // highlight stars
+          stars.forEach((s, i) => s.classList.toggle("active", i < selectedRating));
+          document.getElementById("lighting").value = fb.lighting || "";
+          document.getElementById("police_presence").value = fb.police_presence || "";
+          document.getElementById("crowd_level").value = fb.crowd_level || "";
+          feedbackMsg.value = fb.message || "";
+          // set progress bar from rating (rating 1-5 mapped to 20-100)
+          const score = Math.round((Number(fb.rating) / 5) * 100);
+          progressBar.style.width = score + "%";
+          progressBar.style.backgroundColor = score > 70 ? "green" : score > 40 ? "orange" : "red";
+          scoreText.textContent = `Safety Level: ${score}% (loaded from database)`;
+          submitBtn.textContent = "🔁 Update Feedback";
+          hint.textContent = "This city already has feedback. You can update the existing feedback.";
+        } else {
+          // city not exists
+          isExistingCity = false;
+          // clear form fields but keep city
+          selectedRating = 0;
+          stars.forEach(s => s.classList.remove("active"));
+          document.getElementById("lighting").value = "";
+          document.getElementById("police_presence").value = "";
+          document.getElementById("crowd_level").value = "";
+          feedbackMsg.value = "";
+          progressBar.style.width = "0%";
+          scoreText.textContent = "Safety Level: Not calculated yet.";
+          submitBtn.textContent = "💬 Submit Feedback";
+          hint.textContent = "No existing feedback for this city — you can submit new feedback.";
+        }
+      } catch (err) {
+        console.error(err);
+        alert("Error checking city. See console for details.");
+      }
+    }
+
+    // 🚨 SOS alert (simple opens SMS app on mobile)
+ function sendSOS() {
+  const email = "yourmail@gmail.com"; // <-- put your emergency email here
+
+  // Get live GPS coordinates
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition((pos) => {
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+
+      const mapsLink = `https://www.google.com/maps?q=${lat},${lon}`;
+
+      const subject = encodeURIComponent("🚨 SOS Emergency Alert - URGENT");
+      const body = encodeURIComponent(
+`🚨 SOS EMERGENCY ALERT!
+
+I need immediate help.
+
+// 📍 City: ${currentCity || "Unknown"}
+🌍 Latitude: ${lat}
+🌍 Longitude: ${lon}
+
+📌 Google Maps Location:
+${mapsLink}
+
+Please reach me as soon as possible.`
+      );
+
+      window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
+    },
+    (err) => {
+      // If location denied → send email without GPS
+      const subject = encodeURIComponent("🚨 SOS Emergency Alert - Location Unavailable");
+      const body = encodeURIComponent(
+`🚨 SOS ALERT!
+
+Location permission denied.
+
+📍 City: ${currentCity || "Unknown"}
+
+Please reach me immediately.`
+      );
+
+      window.location.href = `mailto:${email}?subject=${subject}&body=${body}`;
+    });
+  } else {
+    alert("Geolocation is not supported on this device.");
+  }
+}
+
+
+  // window.location.href = `sms:${phoneNumber}?body=${message}`;
+
+    // 📝 Submit (POST if new, PUT if existing)
+    submitBtn.addEventListener("click", async () => {
+      const message = feedbackMsg.value.trim();
+      const lighting = parseInt(document.getElementById("lighting").value);
+      const police_presence = parseInt(document.getElementById("police_presence").value);
+      const crowd_level = parseInt(document.getElementById("crowd_level").value);
+
+      const inputCity = document.getElementById("city-input").value.trim();
+      if (!inputCity || selectedRating === 0) {
+        alert("Please enter/select a city and give a star rating!");
+        return;
+      }
+      currentCity = inputCity;
+
+      if (!lighting || !police_presence || !crowd_level) {
+        alert("Please rate lighting, police presence, and crowd level (1-5)!");
+        return;
+      }
+
+      const payload = {
+        location: currentCity,
+        rating: selectedRating,
+        message,
+        lighting,
+        police_presence,
+        crowd_level
+      };
+
+      try {
+        if (isExistingCity) {
+          // update via PUT
+          const res = await fetch(`http://localhost:5000/api/feedback/${encodeURIComponent(currentCity)}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              rating: selectedRating,
+              message,
+              lighting,
+              police_presence,
+              crowd_level
+            })
+          });
+          const data = await res.json();
+          if (res.ok) {
+            alert(data.message || "Feedback updated successfully!");
+          } else {
+            alert(data.message || "Failed to update feedback");
+          }
+        } else {
+          // create new via POST
+          const res = await fetch('http://localhost:5000/api/feedback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const data = await res.json();
+          if (res.ok) {
+            alert(data.message || "Feedback submitted successfully!");
+            // set isExistingCity true now that it's created
+            isExistingCity = true;
+            submitBtn.textContent = "🔁 Update Feedback";
+            hint.textContent = "Feedback saved. Further submissions will update this city's feedback.";
+          } else if (res.status === 409) {
+            // conflict: server says exists
+            alert(data.message || "Feedback for this city already exists.");
+            // reload existing
+            await checkCityAndLoad();
+          } else {
+            alert(data.message || "Failed to submit feedback.");
+          }
+        }
+
+        // after create/update, refresh list and UI
+        fetchFeedbacks();
+      } catch (err) {
+        console.error(err);
+        alert("Network or server error. See console.");
+      }
+    });
+
+    // 📋 Fetch and display all feedbacks
+    async function fetchFeedbacks() {
+      try {
+        const res = await fetch('http://localhost:5000/api/allfeedbacks');
+        const data = await res.json();
+        feedbackList.innerHTML = "";
+        if (!Array.isArray(data) || data.length === 0) {
+          feedbackList.innerHTML = "<p>No feedbacks yet.</p>";
+          return;
+        }
+        data.forEach(fb => {
+          const div = document.createElement("div");
+          div.className = "feedback-item";
+          div.style = "background:#fff6fb;border-radius:8px;padding:10px;margin-bottom:8px;";
+          const score = Math.round((Number(fb.rating) / 5) * 100);
+          div.innerHTML = `
+            <h4 style="margin:0 0 6px;">🏙️ ${fb.location} <small style="color:#666;font-weight:400">(${score}%)</small></h4>
+            <p style="margin:4px 0;">⭐ Rating: ${fb.rating}</p>
+            <p style="margin:4px 0;">💡 Lighting: ${fb.lighting} | 👮 Police: ${fb.police_presence} | 👥 Crowd: ${fb.crowd_level}</p>
+            <p style="margin:6px 0;color:#333;">💬 ${fb.message ? fb.message : "<i>No message</i>"}</p>
+            <small style="color:#999;">Saved: ${new Date(fb.created_at).toLocaleString()}</small>
+          `;
+          feedbackList.appendChild(div);
+        });
+      } catch (err) {
+        feedbackList.innerHTML = "Error loading feedbacks.";
+        console.error(err);
+      }
+    }
+
+    // load feedbacks on page load
+    fetchFeedbacks();
+  </script>
+
+</body>
+</html>
